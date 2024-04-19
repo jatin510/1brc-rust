@@ -4,14 +4,9 @@ use std::{collections::HashMap, fs};
 pub struct CountryData {
     min: f64,
     max: f64,
-    mean: f64,
     count: u128,
     sum: f64,
 }
-
-// pub struct Output {
-//     data: HashMap<String, CountryData>,
-// }
 
 type Output = HashMap<String, CountryData>;
 
@@ -41,26 +36,34 @@ fn main() {
                 CountryData {
                     min: measurement,
                     max: measurement,
-                    mean: 0.0,
                     sum: measurement,
                     count: 1,
                 },
             );
         }
         count = count + 1;
-        println!("{}", count);
-    }
 
-    for (country, country_data) in &mut output {
-        country_data.mean = country_data.sum / country_data.count as f64;
+        // if count == 100 {
+        //     break;
+        // }
     }
 
     // Convert the HashMap into a Vec of tuples and sort it by key
     let mut sorted_output: Vec<(String, CountryData)> = output.into_iter().collect();
     sorted_output.sort_by_key(|k| k.0.clone());
 
-    if let Some(tuple) = sorted_output.first() {
-        println!("{}", tuple.0);
-        println!("{:?}", tuple.1);
+    print!("{{");
+    for (index, (country, country_data)) in sorted_output.iter().enumerate() {
+        if index > 0 {
+            print!(", ");
+        }
+        let min_value = country_data.min;
+        let max_value = country_data.max;
+        let mean_value = country_data.sum / country_data.count as f64;
+        print!(
+            "{}={:.1}/{:.1}/{:.1}",
+            country, min_value, mean_value, max_value
+        );
     }
+    print!("}}");
 }
