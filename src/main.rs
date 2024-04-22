@@ -1,11 +1,66 @@
+use std::collections::HashMap;
 use std::fs::*;
 use std::io::prelude::*;
+use std::sync::{Arc, Mutex};
 use std::thread::*;
 use std::time::Instant;
 
-fn process_data(data: &[u8]) {
-    // println!("data = {:?}", std::str::from_utf8(&data[]));
-    println!("process data = {:?}", data.len());
+#[derive(Debug)]
+struct CityStats {
+    min: f32,
+    max: f32,
+    count: f32,
+    sum: f32,
+}
+
+type CityDataHashMap = HashMap<String, CityStats>;
+
+fn get_min(a: f32, b: f32) -> f32 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+fn get_max(a: f32, b: f32) -> f32 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+fn process_data(data: &[u8], city_data_hash_map: Arc<Mutex<HashMap<String, CityStats>>>) {
+    // Iterate over each split segment and print it
+
+    for segment in data.split(|&byte| byte == 10) {
+        let mut parts = std::str::from_utf8(segment).unwrap().split(";");
+
+        if let (Some(city), Some(value)) = (parts.next(), parts.next()) {
+            let mut map = city_data_hash_map.lock().unwrap();
+            let val = value.parse::<f32>().unwrap();
+
+            match map.entry(city.to_string()) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    let mut hash_map_value = e.get_mut();
+
+                    hash_map_value.count += 1.0;
+                    hash_map_value.sum += val;
+                    hash_map_value.min = get_min(hash_map_value.min, val);
+                    hash_map_value.max = get_max(hash_map_value.max, val);
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(CityStats {
+                        min: val,
+                        max: val,
+                        count: 0.0,
+                        sum: val,
+                    });
+                }
+            }
+        }
+    }
 }
 
 fn main() {
@@ -21,17 +76,9 @@ fn main() {
     let available_threads = available_parallelism().unwrap();
     println!("Available threads: {:?}", available_threads);
 
-    let d1 = Instant::now();
-
     let file_bytes = contents.as_bytes();
 
-    println!(
-        "Time taken for file changing from string to byte : {:?}",
-        d1.elapsed()
-    );
-
     let file_bytes_size = file_bytes.len();
-    println!("file bytes size: {:?}", file_bytes_size);
 
     let min_slice_size = file_bytes_size / available_threads;
 
@@ -51,20 +98,26 @@ fn main() {
             break;
         }
 
-        // process_data(&file_bytes[start_index..end_index]);
         data_vec.push(&file_bytes[start_index..end_index]);
 
         start_index = end_index + 1;
         end_index = start_index + min_slice_size;
     }
 
-    println!("data_vec: {}", data_vec[0].len());
+    let time_for_threads = Instant::now();
+
+    let city_data_hash_map = Arc::new(Mutex::new(CityDataHashMap::new()));
 
     scope(|s| {
         for data in data_vec {
-            // s.spawn(move || {})
-            // println!("{}", std::str::from_utf8(&data[0..10]).unwrap());
-            s.spawn(move || process_data(data));
+            let city_data_hash_map_clone = city_data_hash_map.clone();
+
+            s.spawn(move || process_data(data, city_data_hash_map_clone));
         }
-    })
+    });
+
+    println!(
+        "time taken for all the threads {:?}",
+        time_for_threads.elapsed()
+    )
 }
