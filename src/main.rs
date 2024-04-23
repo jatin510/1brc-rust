@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs::*;
+use std::hash::Hash;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::thread::*;
@@ -31,20 +32,19 @@ fn get_max(a: f32, b: f32) -> f32 {
     }
 }
 
-fn process_data(data: &[u8], city_data_hash_map: Arc<Mutex<HashMap<String, CityStats>>>) {
+fn process_data(data: &[u8]) -> HashMap<String, CityStats> {
     // Iterate over each split segment and print it
+    let mut map: HashMap<String, CityStats> = HashMap::new();
 
     for segment in data.split(|&byte| byte == 10) {
         let mut parts = std::str::from_utf8(segment).unwrap().split(";");
 
         if let (Some(city), Some(value)) = (parts.next(), parts.next()) {
-            let mut map = city_data_hash_map.lock().unwrap();
             let val = value.parse::<f32>().unwrap();
 
             match map.entry(city.to_string()) {
                 std::collections::hash_map::Entry::Occupied(mut e) => {
                     let mut hash_map_value = e.get_mut();
-
                     hash_map_value.count += 1.0;
                     hash_map_value.sum += val;
                     hash_map_value.min = get_min(hash_map_value.min, val);
@@ -61,6 +61,8 @@ fn process_data(data: &[u8], city_data_hash_map: Arc<Mutex<HashMap<String, CityS
             }
         }
     }
+
+    map
 }
 
 fn main() {
@@ -106,13 +108,32 @@ fn main() {
 
     let time_for_threads = Instant::now();
 
-    let city_data_hash_map = Arc::new(Mutex::new(CityDataHashMap::new()));
+    let mut city_data_hash_map = Arc::new(Mutex::new(CityDataHashMap::new()));
 
     scope(|s| {
         for data in data_vec {
-            let city_data_hash_map_clone = city_data_hash_map.clone();
+            let mut city_data_hash_map_clone = city_data_hash_map.clone();
 
-            s.spawn(move || process_data(data, city_data_hash_map_clone));
+            s.spawn(move || {
+                let temp_map: HashMap<String, CityStats> = process_data(data);
+
+                let mut main_hash_map = city_data_hash_map_clone.lock().unwrap();
+
+                for (city, stats) in temp_map {
+                    match main_hash_map.entry(city) {
+                        std::collections::hash_map::Entry::Occupied(mut e) => {
+                            let mut hash_map_value = e.get_mut();
+                            hash_map_value.count += stats.count;
+                            hash_map_value.sum += stats.sum;
+                            hash_map_value.min = get_min(hash_map_value.min, stats.min);
+                            hash_map_value.max = get_max(hash_map_value.max, stats.max);
+                        }
+                        std::collections::hash_map::Entry::Vacant(e) => {
+                            e.insert(stats);
+                        }
+                    }
+                }
+            });
         }
     });
 
